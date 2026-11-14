@@ -9,7 +9,6 @@ import daosRouter from './routes/daos.js';
 import delegatesRouter from './routes/delegates.js';
 import proposalsRouter from './routes/proposals.js';
 import scorecardsRouter from './routes/scorecards.js';
-import rewardsRouter from './routes/rewards.js';
 import guardianRouter from './routes/guardian.js';
 import analysisRouter from './routes/analysis.js';
 import forumRouter from './routes/forum.js';
@@ -20,7 +19,28 @@ export const app = express();
 // Middleware
 app.use(
   cors({
-    origin: [config.FRONTEND_URL, 'http://localhost:5173', 'http://127.0.0.1:5173'],
+    origin: (origin, callback) => {
+      // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
+      if (!origin) return callback(null, true);
+
+      // Allow localhost or 127.0.0.1
+      if (/^https?:\/\/localhost(:\d+)?$/.test(origin) || /^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)) {
+        return callback(null, true);
+      }
+
+      // Allow configured FRONTEND_URL
+      if (config.FRONTEND_URL && origin === config.FRONTEND_URL) {
+        return callback(null, true);
+      }
+
+      // Allow any vercel.app domain (including preview deployments and production)
+      if (/\.vercel\.app$/.test(origin) || origin === 'https://turnout-navy.vercel.app') {
+        return callback(null, true);
+      }
+
+      // Default allow for web clients
+      return callback(null, true);
+    },
     credentials: true,
   })
 );
@@ -28,6 +48,14 @@ app.use(express.json({ limit: '2mb' }));
 if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
+
+// URL Normalization Middleware: ensure requests routed via serverless or rewrites match /api routers
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  if (!req.url.startsWith('/api')) {
+    req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
+  }
+  next();
+});
 
 // Simple in-memory rate limiter
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
@@ -65,7 +93,6 @@ app.use('/api', daosRouter);
 app.use('/api', delegatesRouter);
 app.use('/api', proposalsRouter);
 app.use('/api', scorecardsRouter);
-app.use('/api', rewardsRouter);
 app.use('/api', guardianRouter);
 app.use('/api', analysisRouter);
 app.use('/api', forumRouter);
